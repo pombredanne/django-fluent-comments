@@ -1,7 +1,6 @@
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models
 from django.http import HttpResponse, HttpResponseBadRequest
-from django.utils import simplejson
 from django.template.loader import render_to_string
 from django.template import RequestContext
 from django.contrib import comments
@@ -11,6 +10,7 @@ from django.utils.html import escape
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_POST
 from fluent_comments import appsettings
+import json
 
 
 @csrf_protect
@@ -44,15 +44,18 @@ def post_comment_ajax(request, using=None):
     if ctype is None or object_pk is None:
         return CommentPostBadRequest("Missing content_type or object_pk field.")
     try:
+        object_pk = long(object_pk)
         model = models.get_model(*ctype.split(".", 1))
         target = model._default_manager.using(using).get(pk=object_pk)
+    except ValueError:
+        return CommentPostBadRequest("Invalid object_pk value: {0}".format(escape(object_pk)))
     except TypeError:
-        return CommentPostBadRequest("Invalid content_type value: {0!r}".format)
+        return CommentPostBadRequest("Invalid content_type value: {0}".format(escape(ctype)))
     except AttributeError:
-        return CommentPostBadRequest("The given content-type {0} does not resolve to a valid model.".format)
+        return CommentPostBadRequest("The given content-type {0} does not resolve to a valid model.".format(escape(ctype)))
     except ObjectDoesNotExist:
         return CommentPostBadRequest("No object matching content-type {0} and object PK {1} exists.".format(escape(ctype), escape(object_pk)))
-    except (ValueError, ValidationError), e:
+    except (ValueError, ValidationError) as e:
         return CommentPostBadRequest("Attempting go get content-type {0!r} and object PK {1!r} exists raised {2}".format(escape(ctype), escape(object_pk), e.__class__.__name__))
 
     # Do we want to preview the comment?
@@ -68,9 +71,9 @@ def post_comment_ajax(request, using=None):
     # If there are errors or if we requested a preview show the comment
     if preview:
         comment = form.get_comment_object() if not form.errors else None
-        return _ajax_result(request, form, "preview", comment)
+        return _ajax_result(request, form, "preview", comment, object_id=object_pk)
     if form.errors:
-        return _ajax_result(request, form, "post")
+        return _ajax_result(request, form, "post", object_id=object_pk)
 
 
     # Otherwise create the comment
@@ -98,10 +101,10 @@ def post_comment_ajax(request, using=None):
         request = request
     )
 
-    return _ajax_result(request, form, "post", comment)
+    return _ajax_result(request, form, "post", comment, object_id=object_pk)
 
 
-def _ajax_result(request, form, action, comment=None):
+def _ajax_result(request, form, action, comment=None, object_id=None):
     # Based on django-ajaxcomments, BSD licensed.
     # Copyright (c) 2009 Brandon Konkle and individual contributors.
     #
@@ -117,10 +120,12 @@ def _ajax_result(request, form, action, comment=None):
             json_errors[field_name] = _render_errors(field)
         success = False
 
-    json = {
+    json_return = {
         'success': success,
         'action': action,
         'errors': json_errors,
+        'object_id': object_id,
+        'use_threadedcomments': bool(appsettings.USE_THREADEDCOMMENTS),
     }
 
     if comment is not None:
@@ -128,17 +133,21 @@ def _ajax_result(request, form, action, comment=None):
             'comment': comment,
             'action': action,
             'preview': (action == 'preview'),
+            'USE_THREADEDCOMMENTS': appsettings.USE_THREADEDCOMMENTS,
         }
         comment_html = render_to_string('comments/comment.html', context, context_instance=RequestContext(request))
 
-        json.update({
+        json_return.update({
             'html': comment_html,
             'comment_id': comment.id,
+            'parent_id': None,
             'is_moderated': not comment.is_public,   # is_public flags changes in comment_will_be_posted
         })
+        if appsettings.USE_THREADEDCOMMENTS:
+            json_return['parent_id'] = comment.parent_id
 
-    json_response = simplejson.dumps(json)
-    return HttpResponse(json_response, mimetype="application/json")
+    json_response = json.dumps(json_return)
+    return HttpResponse(json_response, content_type="application/json")
 
 
 def _render_errors(field):

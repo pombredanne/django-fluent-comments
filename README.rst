@@ -6,9 +6,10 @@ of the django.contrib.comments_ application to be directly usable in web sites.
 The features are:
 
 * Ajax-based preview and posting of comments
-* Configurable form layouts using django-crispy-forms_.
-* Comment moderationm, using Akismet_ integration and auto-closing after N days.
+* Configurable form layouts using django-crispy-forms_ and settings to exclude fields.
+* Comment moderation, using Akismet_ integration and auto-closing after N days.
 * E-mail notification to the site managers of new comments.
+* Optional threaded comments support via django-threadedcomments_.
 
 The application is designed to be plug&play;
 installing it should already give a better comment layout.
@@ -16,10 +17,12 @@ installing it should already give a better comment layout.
 Installation
 ============
 
-First install the module, preferably in a virtual environment::
+First install the module, preferably in a virtual environment. It can be installed from PyPI::
 
-    git clone https://github.com/edoburu/django-fluent-comments.git
-    cd django-fluent-comments
+    pip install django-fluent-comments
+
+Or the current folder can be installed::
+
     pip install .
 
 Configuration
@@ -99,6 +102,17 @@ If your form CSS framework is not supported, you can create a template pack
 for it and submit a pull request to the django-crispy-forms_ authors for inclusion.
 
 
+Hiding form fields
+~~~~~~~~~~~~~~~~~~
+
+Form fields can be hidden using the following settings::
+
+    FLUENT_COMMENTS_EXCLUDE_FIELDS = ('name', 'email', 'url')
+    COMMENTS_APP = 'fluent_comments'
+
+When `django-threadedcomments`_ in used, the ``title`` field can also be removed.
+
+
 Comment moderation
 ------------------
 
@@ -145,18 +159,17 @@ The template ``comments/comment_notification_email.txt`` is used to generate the
 Threaded comments
 -----------------
 
-There is rudimentary support for `django-threadedcomments`_ in this module,
-which can be enabled with the following settings::
+There is build-in support for django-threadedcomments_ in this module.
+It can be enabled using the following settings::
 
     INSTALLED_APPS += (
         'threadedcomments',
     )
 
-    COMMENTS_APP = 'threadedcomments'
+    COMMENTS_APP = 'fluent_comments'
 
-Note however, that some improvements to django-threadedcomments_ are still open
-(see `pull request #39 <https://github.com/HonzaKral/django-threadedcomments/pull/39>`_)
-and until that moment it is not easy to take full advantage of the threaded display.
+The templates and admin interface adapt themselves automatically
+to show the threaded comments.
 
 
 Contributing
